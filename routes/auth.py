@@ -3,9 +3,10 @@ Authentication Routes - Login, Logout, Registration
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
-from models.models import User, Role, Department, AppConfig, GuestOTP
+from models.models import User, Role, Department, AppConfig
 from models import db
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from datetime import datetime, timedelta
 from utils.email_utils import send_email
 import os
 
@@ -43,7 +44,7 @@ def login():
             # Do not affect other roles.
             from datetime import datetime as _dt
             role_name_db = (user.role.role_name or '').strip().lower() if user.role else ''
-            is_guest_user = role_name_db == 'guest' or bool(getattr(user, 'is_guest', False))
+            is_guest_user = role_name_db == 'guest'
             if is_guest_user:
                 # If expiry_date set and in the past, mark expired and prevent login
                 if getattr(user, 'expiry_date', None) and user.expiry_date and _dt.utcnow() > user.expiry_date:
@@ -94,166 +95,161 @@ def login():
 
 
 
-    # --- Guest login flow (mobile OTP only) ---
-from datetime import datetime, timedelta
-import random
+    # Mobile/SMS guest login removed — use email guest links only.
 
-@bp.route('/guest', methods=['GET', 'POST'])
-def guest_request():
-    """Guest login using mobile number only: send OTP and redirect to verify."""
+
+@bp.route('/guest/email', methods=['GET', 'POST'])
+def guest_email_request():
+    """Request a guest login link via email."""
     cfg = AppConfig.query.get('guest_enabled')
     if not cfg or cfg.value != '1':
         flash('Guest login is disabled', 'warning')
         return redirect(url_for('auth.login'))
 
     if request.method == 'POST':
-        mobile = (request.form.get('mobile') or '').strip()
-        if not mobile or not mobile.replace('+', '').isdigit():
-            flash('Please provide a valid mobile number', 'error')
-            return redirect(url_for('auth.guest_request'))
+        email = (request.form.get('email') or '').strip().lower()
+        if not email or '@' not in email:
+            flash('Please provide a valid email address', 'error')
+            return redirect(url_for('auth.guest_email_request'))
 
-        # Rate limiting: max 5 OTPs in last hour
-        recent = GuestOTP.query.filter(GuestOTP.mobile_number == mobile,
-                                       GuestOTP.created_at >= datetime.utcnow() - timedelta(hours=1)).count()
-        if recent >= 5:
-            flash('Too many OTP requests. Try again later.', 'error')
-            return redirect(url_for('auth.login'))
+        # If this email already belongs to a non-guest user, do not send a guest login link.
+        existing = User.query.filter_by(email=email).first()
+        if existing:
+            role_name_db = (existing.role.role_name or '').strip().lower() if existing.role else ''
+            if role_name_db != 'guest':
+                flash('This email is already registered. Please login using your account.', 'warning')
+                return redirect(url_for('auth.login'))
 
-        code = f"{random.randint(100000, 999999)}"
-        otp = GuestOTP(mobile_number=mobile, code=code)
-        db.session.add(otp)
-        db.session.commit()
+        # Generate signed token and send email
+        serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        token = serializer.dumps({'email': email, 'purpose': 'guest_email_login'}, salt='guest-email')
+        verify_url = url_for('auth.guest_email_verify', token=token, _external=True)
 
-        # Send SMS via configured provider (Twilio) with graceful fallback
-        sent = False
+        subject = 'Your Guest Login Link'
+        # Plain text fallback and HTML email with a button for Gmail / clients that render HTML
+        body = (
+            f'Hello,\n\nUse the link below to login as a guest (valid for 15 minutes):\n\n{verify_url}\n\nIf you did not request this, ignore this email.'
+        )
+        html_body = f"""
+        <html>
+          <body>
+            <p>Hello,</p>
+            <p>Click the button below to login as a guest (valid for 15 minutes):</p>
+            <p><a href=\"{verify_url}\" style=\"display:inline-block;padding:12px 20px;background-color:#1a73e8;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;\">Login as Guest</a></p>
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p><a href=\"{verify_url}\">{verify_url}</a></p>
+            <p>If you did not request this, ignore this email.</p>
+          </body>
+        </html>
+        """
         try:
-            from utils.sms_utils import send_sms
-            sent = send_sms(mobile, f"Your Campus Events OTP is: {code}")
+            send_email(email, subject, body, html_body=html_body)
+            flash('A login link has been sent to your email address.', 'success')
         except Exception:
-            sent = False
+            current_app.logger.exception('Failed to send guest login email')
+            flash('Failed to send email. Please contact the administrator.', 'error')
 
-        # Development fallback: show OTP in flash if SMS not sent and debugging enabled
-        if not sent and os.getenv('FLASK_DEBUG', '0') == '1':
-            flash(f'Guest OTP (dev): {code}', 'info')
-
-        return redirect(url_for('auth.guest_verify', mobile=mobile))
-
-    return render_template('auth/guest_request.html')
-
-
-@bp.route('/guest/verify', methods=['GET', 'POST'])
-def guest_verify():
-    """Verify OTP sent to mobile and create/login guest user."""
-    mobile = (request.args.get('mobile') or request.form.get('mobile') or '').strip()
-    if not mobile:
-        flash('Mobile number required', 'error')
         return redirect(url_for('auth.login'))
 
-    if request.method == 'POST':
-        code = (request.form.get('code') or '').strip()
-        otp = GuestOTP.query.filter_by(mobile_number=mobile, code=code, used=False).order_by(GuestOTP.created_at.desc()).first()
-        if not otp or (datetime.utcnow() - otp.created_at).total_seconds() > 300:
-            flash('Invalid or expired OTP', 'error')
-            return redirect(url_for('auth.guest_request'))
+    return render_template('auth/guest_email_request.html')
 
-        otp.used = True
+
+@bp.route('/guest/email/verify')
+def guest_email_verify():
+    """Verify the guest email token and create/login guest user."""
+    token = request.args.get('token')
+    if not token:
+        flash('Missing token', 'error')
+        return redirect(url_for('auth.login'))
+
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    try:
+        data = serializer.loads(token, salt='guest-email', max_age=900)
+    except SignatureExpired:
+        flash('Login link expired', 'error')
+        return redirect(url_for('auth.guest_email_request'))
+    except Exception:
+        flash('Invalid login link', 'error')
+        return redirect(url_for('auth.login'))
+
+    email = data.get('email')
+    if not email:
+        flash('Invalid token payload', 'error')
+        return redirect(url_for('auth.login'))
+
+    # Find or create guest user by email
+    user = User.query.filter_by(email=email).first()
+    if user:
+        role_name_db = (user.role.role_name or '').strip().lower() if user.role else ''
+        if role_name_db != 'guest':
+            # This email belongs to a normal user (admin/student/etc) — do not allow guest login.
+            flash('This email is registered with an existing account. Please login with your credentials.', 'warning')
+            return redirect(url_for('auth.login'))
+    guest_role = Role.query.filter(Role.role_name.ilike('guest')).first()
+    student_role = Role.query.filter(Role.role_name.ilike('student')).first()
+
+    if not user:
+        validity_days = 30
+        vcfg = AppConfig.query.get('guest_validity_days')
+        if vcfg and vcfg.value and vcfg.value.isdigit():
+            validity_days = int(vcfg.value)
+        expiry = datetime.utcnow() + timedelta(days=validity_days)
+        assigned_role_id = guest_role.role_id if guest_role else (student_role.role_id if student_role else 1)
+
+        user = User(
+            full_name=f'Guest {email.split("@")[0]}',
+            username=None,
+            email=email,
+            role_id=assigned_role_id,
+            dept_id=None,
+        )
+        user.set_password(__import__('uuid').uuid4().hex)
+        user.expiry_date = expiry
+        user.guest_status = 'active'
+        # generate a short unique guest username like G-XXXXXXXX
+        import uuid
+        def make_code():
+            return f"G-{uuid.uuid4().hex[:8].upper()}"
+        code = make_code()
+        from models.models import User as _U
+        while _U.query.filter_by(username=code).first():
+            code = make_code()
+        user.username = code
+        db.session.add(user)
         db.session.commit()
-
-        # Prefer users with this mobile who have the Guest role, otherwise match by mobile number
-        user = User.query.filter_by(mobile_number=mobile).first()
-        if user:
-            role_name_db = (user.role.role_name or '').strip().lower() if user.role else ''
-            if role_name_db != 'guest' and not getattr(user, 'is_guest', False):
-                # existing non-guest user with same mobile — treat as no match
-                user = None
-        # Prefer a dedicated 'Guest' role; fall back to 'Student' if not present
-        guest_role = Role.query.filter(Role.role_name.ilike('guest')).first()
-        # Ensure a dedicated Guest role exists; create if missing
-        if not guest_role:
-            try:
-                guest_role = Role(role_name='Guest')
-                db.session.add(guest_role)
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-                guest_role = None
-        student_role = Role.query.filter(Role.role_name.ilike('student')).first()
-        if not user:
-            validity_days = 30
-            vcfg = AppConfig.query.get('guest_validity_days')
-            if vcfg and vcfg.value and vcfg.value.isdigit():
-                validity_days = int(vcfg.value)
-            expiry = datetime.utcnow() + timedelta(days=validity_days)
-            assigned_role_id = None
-            if guest_role:
-                assigned_role_id = guest_role.role_id
-            elif student_role:
-                assigned_role_id = student_role.role_id
-            else:
-                assigned_role_id = 1
-
-            user = User(
-                full_name=f'Guest {mobile[-4:]}',
-                username=None,
-                email=None,
-                role_id=assigned_role_id,
-                dept_id=None
-            )
-            user.set_password(__import__('uuid').uuid4().hex)
-            # Rely on role assignment for guest semantics; legacy `is_guest` column left as-is
-            user.mobile_number = mobile
-            # generate a short unique guest identifier and store it in `username`
+    else:
+        # existing user
+        # ensure existing guest has a username we can use as Guest ID
+        if not user.username:
             import uuid
             def make_code():
                 return f"G-{uuid.uuid4().hex[:8].upper()}"
             code = make_code()
-            # ensure uniqueness among usernames
             from models.models import User as _U
             while _U.query.filter_by(username=code).first():
                 code = make_code()
             user.username = code
-            # also store the guest identifier in `username` so it can be used as Guest ID
-            user.username = code
-            user.expiry_date = expiry
-            user.guest_status = 'active'
-            db.session.add(user)
             db.session.commit()
-        else:
-            # ensure existing guest user has a username we can use as Guest ID
-            if not user.username:
-                import uuid
-                def make_code():
-                    return f"G-{uuid.uuid4().hex[:8].upper()}"
-                code = make_code()
-                from models.models import User as _U
-                while _U.query.filter_by(username=code).first():
-                    code = make_code()
-                user.username = code
-                db.session.commit()
-            if user.expiry_date and datetime.utcnow() > user.expiry_date:
-                user.guest_status = 'expired'
-                db.session.commit()
-                flash('Guest account expired. Please request a new guest account.', 'error')
-                return redirect(url_for('auth.login'))
+        if user.expiry_date and datetime.utcnow() > user.expiry_date:
+            user.guest_status = 'expired'
+            db.session.commit()
+            flash('Guest account expired. Please request a new guest account.', 'error')
+            return redirect(url_for('auth.guest_email_request'))
 
-        session.permanent = True
-        session['user_id'] = user.user_id
-        session['full_name'] = user.full_name
-        # For guest users prefer mobile_number; email may be None
-        session['email'] = user.email
-        session['role_id'] = user.role_id
-        # Use Guest as display role for guest logins
-        session['role_name'] = 'Guest'
-        session['dept_id'] = user.dept_id
-        # Backwards-compatible session flag
-        session['is_guest'] = (user.role and (user.role.role_name or '').strip().lower() == 'guest') or bool(getattr(user, 'is_guest', False))
-        session['mobile_number'] = user.mobile_number
-        # store guest identifier in session (username acts as Guest ID)
-        session['guest_code'] = user.username
-        session['username'] = user.username
-        return redirect(url_for('student.dashboard'))
-
-    return render_template('auth/guest_verify.html', mobile=mobile)
+    # Create session for guest user
+    session.permanent = True
+    session['user_id'] = user.user_id
+    session['full_name'] = user.full_name
+    session['email'] = user.email
+    session['role_id'] = user.role_id
+    session['role_name'] = 'Guest'
+    session['dept_id'] = user.dept_id
+    # Keep a session flag for compatibility
+    session['is_guest'] = True if (user.role and (user.role.role_name or '').strip().lower() == 'guest') else False
+    # store guest identifier in session (username acts as Guest ID)
+    session['guest_code'] = user.username
+    session['username'] = user.username
+    return redirect(url_for('student.dashboard'))
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
@@ -388,6 +384,19 @@ def forgot_password():
                 f"{reset_url}\n\n"
                 "If you didn't request this, you can ignore this email."
             )
+            # Attempt to send the reset email. Do not reveal account existence to the requester.
+            try:
+                if user.email:
+                    send_email(user.email, subject, body)
+                else:
+                    # No email configured for this user; log the reset URL for administrator debugging
+                    current_app.logger.info(f"Password reset URL for user_id={user.user_id}: {reset_url}")
+            except Exception:
+                current_app.logger.exception('Failed to send password reset email')
+
+            # Always show the same generic message to avoid account enumeration
+            flash('If an account with that identifier exists, a password reset link has been sent to the registered email address.', 'info')
+            return redirect(url_for('auth.login'))
             
     return render_template('auth/forgot_password.html')
 

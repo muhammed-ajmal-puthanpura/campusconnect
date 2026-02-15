@@ -233,7 +233,8 @@ def create_event():
             is_team_event=request.form.get('is_team_event') == '1',
             min_team_size=int(request.form.get('min_team_size', 2)) if request.form.get('is_team_event') == '1' else 1,
             max_team_size=int(request.form.get('max_team_size', 4)) if request.form.get('is_team_event') == '1' else 1,
-            has_prizes=request.form.get('has_prizes') == '1'
+            has_prizes=request.form.get('has_prizes') == '1',
+            duty_leave_provided=request.form.get('duty_leave') == '1'
         )
         # Audience setting: campus-exclusive or public
         audience_val = request.form.get('audience', 'public')
@@ -448,6 +449,7 @@ def edit_event(event_id):
         event.meeting_url = meeting_url if meeting_url else None
         event.certificate_template_id = int(certificate_template_id) if certificate_template_id else None
         event.has_prizes = request.form.get('has_prizes') == '1'
+        event.duty_leave_provided = request.form.get('duty_leave') == '1'
 
         if requires_reapproval:
             event.status = 'pending'

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Guest Email Login - Campus Events{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+  <div class="auth-card">
+    <h2>Guest Login via Email</h2>
+    <p>Enter your email address and we'll send a one-time login link.</p>
+
+    <form method="POST" action="{{ url_for('auth.guest_email_request') }}">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" class="form-control" required placeholder="you@example.com">
+      </div>
+      <button type="submit" class="btn btn-primary">Send Login Link</button>
+    </form>
+
+    <div style="margin-top:12px;">
+      <a href="{{ url_for('auth.login') }}">Back to login</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

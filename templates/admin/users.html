@@ -125,7 +125,6 @@ Jane Smith,22EC002,jane.smith@campus.edu,Electronics,Student@123</pre>
             <tr>
                 <th>Name</th>
                 <th>Username</th>
-                <th>Mobile</th>
                 <th>Email</th>
                 <th>Role</th>
                 <th>Department</th>
@@ -138,14 +137,12 @@ Jane Smith,22EC002,jane.smith@campus.edu,Electronics,Student@123</pre>
             <tr>
                 <td>{{ user.full_name }}</td>
                 <td>{{ user.username or '—' }}</td>
-                <td>{{ user.mobile_number or '—' }}</td>
                 <td>{{ user.email or '—' }}</td>
                 <td>
                     {% if user.role and (user.role.role_name or '')|lower == 'guest' %}
                         {% set role_name = 'Guest' %}
                         {% set role_lower = 'guest' %}
-                    {% elif user.is_guest %}
-                        {# Legacy fallback if role not set but is_guest flagged in DB #}
+                    {% elif user.role and (user.role.role_name or '')|lower == 'guest' %}
                         {% set role_name = 'Guest' %}
                         {% set role_lower = 'guest' %}
                     {% else %}

@@ -11,12 +11,12 @@
 
 <h3>Guests</h3>
 <table>
-  <tr><th>ID</th><th>Name</th><th>Mobile</th><th>Created</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
+  <tr><th>ID</th><th>Name</th><th>Email</th><th>Created</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
   {% for g in guests %}
   <tr>
     <td>{{ g.user_id }}</td>
     <td>{{ g.full_name }}</td>
-    <td>{{ g.mobile_number }}</td>
+    <td>{{ g.email or '—' }}</td>
     <td>{{ g.created_at }}</td>
     <td>{{ g.expiry_date }}</td>
     <td>{{ g.guest_status }}</td>

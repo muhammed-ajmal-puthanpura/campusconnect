@@ -23,23 +23,17 @@ def profile():
         full_name = (request.form.get('full_name') or '').strip()
         username = (request.form.get('username') or '').strip()
         email = (request.form.get('email') or '').strip().lower()
-        mobile = (request.form.get('mobile_number') or '').strip()
 
         role_name = (user.role.role_name or '').lower() if user.role else ''
-        # Determine guest status primarily from role; fall back to legacy `is_guest` flag
-        is_guest_user = (user.role and (user.role.role_name or '').strip().lower() == 'guest') or bool(getattr(user, 'is_guest', False))
+        # Determine guest status from role (legacy `is_guest` DB flag removed)
+        is_guest_user = (user.role and (user.role.role_name or '').strip().lower() == 'guest')
         # Treat real students (non-guest) as locked for name/username edits.
         is_student = (role_name == 'student') and not is_guest_user
 
-        # For guest users, require mobile number instead of email
-        if is_guest_user:
-            if not mobile or not mobile.replace('+', '').isdigit():
-                flash('Mobile number is required for guest accounts.', 'error')
-                return redirect(url_for('common.profile'))
-        else:
-            if not email:
-                flash('Email is required.', 'error')
-                return redirect(url_for('common.profile'))
+        # Require email for all account types (guests use email-based login)
+        if not email:
+            flash('Email is required.', 'error')
+            return redirect(url_for('common.profile'))
 
         # Allow editing name for non-students. Do NOT allow username changes for guest users.
         if not is_student:
@@ -58,16 +52,12 @@ def profile():
                 user.full_name = full_name
                 session['full_name'] = full_name
 
-        # Update mobile for guest users
+        # Update email (ensure uniqueness). Guests cannot change their email.
         if is_guest_user:
-            if mobile != (user.mobile_number or ''):
-                # ensure uniqueness among users for this mobile (excluding this user)
-                existing = User.query.filter(User.mobile_number == mobile, User.user_id != user.user_id).first()
-                if existing:
-                    flash('Mobile number already in use. Please choose another.', 'error')
-                    return redirect(url_for('common.profile'))
-                user.mobile_number = mobile
-                session['mobile_number'] = mobile
+            # Prevent guests from changing their email address
+            if email != (user.email or ''):
+                flash('Guest email cannot be changed. Please contact an administrator.', 'error')
+                return redirect(url_for('common.profile'))
         else:
             if email != (user.email or ''):
                 if User.query.filter_by(email=email).first():

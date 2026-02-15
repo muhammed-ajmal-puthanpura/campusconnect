@@ -430,9 +430,9 @@ def invite_member(team_id):
         flash(f'User "{username}" not found', 'error')
         return redirect(url_for('student.manage_team', team_id=team_id))
     
-    # Allow inviting students and guests (role-based) or legacy guest flag
+    # Allow inviting students and guests (role-based)
     role_lower = (invitee.role.role_name or '').strip().lower() if invitee.role else ''
-    is_guest_invitee = role_lower == 'guest' or bool(getattr(invitee, 'is_guest', False))
+    is_guest_invitee = role_lower == 'guest'
     if not (role_lower == 'student' or is_guest_invitee):
         flash('You can only invite students or guest users by username', 'error')
         return redirect(url_for('student.manage_team', team_id=team_id))

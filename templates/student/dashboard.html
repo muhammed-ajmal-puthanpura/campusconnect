@@ -12,6 +12,7 @@
     <div style="background: linear-gradient(135deg,#fff7ed,#ffedd5); border-left: 4px solid #f97316; padding: 0.9rem 1rem; border-radius: 8px; margin-bottom:1rem;">
         <strong>Note for guests:</strong>
         <span style="margin-left:0.5rem;">This is a temporary guest account (valid for 30 days). Make sure to download any certificates or important data before it expires.</span>
+        <p style="margin-top:6px; margin-bottom:0;">The name on guest accounts may be auto-generated. Please <a href="{{ url_for('common.profile') }}">edit your Full Name</a> to your real name so certificates are generated correctly.</p>
     </div>
     {% endif %}
     
@@ -101,6 +102,9 @@
                             <span class="badge badge-success">{{ event.status }}</span>
                             {% if event.is_team_event %}
                             <span class="badge" style="background: #7c3aed; color: white;"><i class="ph ph-users-three"></i> Team</span>
+                            {% endif %}
+                            {% if event.duty_leave_provided %}
+                            <span class="badge" style="background: #10b981; color: white;"><i class="ph ph-briefcase"></i> Duty Leave</span>
                             {% endif %}
                         </div>
                     </div>

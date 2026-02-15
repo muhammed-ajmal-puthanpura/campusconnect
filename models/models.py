@@ -49,9 +49,6 @@ class User(db.Model):
     role_id = db.Column(db.Integer, db.ForeignKey('roles.role_id'), nullable=False)
     dept_id = db.Column(db.Integer, db.ForeignKey('departments.dept_id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    # Guest account fields
-    is_guest = db.Column(db.Boolean, default=False)
-    mobile_number = db.Column(db.String(20), unique=True, nullable=True)
     expiry_date = db.Column(db.DateTime, nullable=True)
     guest_status = db.Column(db.String(20), default='active')  # active, expired, disabled
     
@@ -74,7 +71,7 @@ class User(db.Model):
         return check_password_hash(self.password, password)
     
     def __repr__(self):
-        return f'<User {self.email or self.mobile_number}>'
+        return f'<User {self.email}>'
 
 
 class Venue(db.Model):
@@ -121,7 +118,6 @@ class Event(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Guest account fields
     is_guest = db.Column(db.Boolean, default=False)
-    mobile_number = db.Column(db.String(20), unique=True, nullable=True)
     expiry_date = db.Column(db.DateTime, nullable=True)
     guest_status = db.Column(db.String(20), default='active')  # active, expired, disabled
 
@@ -135,6 +131,8 @@ class Event(db.Model):
     
     # Prize event field (for events with prizes - applies to both team and individual events)
     has_prizes = db.Column(db.Boolean, default=False)
+    # Whether duty leave is provided for this event (visible to students)
+    duty_leave_provided = db.Column(db.Boolean, default=False)
     
     # Relationships
     approvals = db.relationship('Approval', backref='event', lazy=True, cascade='all, delete-orphan')
@@ -199,7 +197,6 @@ class Team(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Guest account fields
     is_guest = db.Column(db.Boolean, default=False)
-    mobile_number = db.Column(db.String(20), unique=True, nullable=True)
     expiry_date = db.Column(db.DateTime, nullable=True)
     guest_status = db.Column(db.String(20), default='active')  # active, expired, disabled
 
@@ -230,7 +227,6 @@ class TeamInvitation(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Guest account fields
     is_guest = db.Column(db.Boolean, default=False)
-    mobile_number = db.Column(db.String(20), unique=True, nullable=True)
     expiry_date = db.Column(db.DateTime, nullable=True)
     guest_status = db.Column(db.String(20), default='active')  # active, expired, disabled
 
@@ -284,7 +280,6 @@ class CertificateTemplate(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Guest account fields
     is_guest = db.Column(db.Boolean, default=False)
-    mobile_number = db.Column(db.String(20), unique=True, nullable=True)
     expiry_date = db.Column(db.DateTime, nullable=True)
     guest_status = db.Column(db.String(20), default='active')  # active, expired, disabled
 
@@ -310,18 +305,7 @@ class Feedback(db.Model):
         return f'<Feedback {self.feedback_id}>'
 
 
-class GuestOTP(db.Model):
-    """Temporary OTP storage for guest login"""
-    __tablename__ = 'guest_otps'
 
-    id = db.Column(db.Integer, primary_key=True)
-    mobile_number = db.Column(db.String(20), nullable=False, index=True)
-    code = db.Column(db.String(10), nullable=False)
-    used = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f'<GuestOTP {self.mobile_number} {self.code}>'
 
 
 class AppConfig(db.Model):

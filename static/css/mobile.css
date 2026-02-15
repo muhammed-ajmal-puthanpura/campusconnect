@@ -28,6 +28,10 @@
         overflow-y: auto;
     }
 
+    /* Hide top hamburger toggle and footer on mobile since we use bottom nav */
+    .nav-toggle { display: none !important; }
+    .footer { display: none !important; }
+
     /* Stat cards 2-column on tablet */
     .dashboard-stats {
         gap: 0.75rem;
@@ -127,6 +131,107 @@
     
     .camera-preview-container {
         border-radius: var(--radius-sm);
+    }
+
+    /* App-like full-bleed login layout: span the screen and feel native */
+    .auth-app-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        padding: 0; /* no surrounding background */
+        background: none;
+    }
+
+    /* Make the card fill the viewport on small devices */
+    .auth-app-wrapper .auth-card {
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        border-radius: 0; /* full-bleed */
+        /* stronger inner boundary to clearly highlight the login area */
+        box-shadow: inset 0 3px 0 rgba(15,23,42,0.08), inset 0 -3px 0 rgba(15,23,42,0.08);
+        border-top: 3px solid var(--primary-color) !important;
+        border-bottom: 3px solid var(--primary-color) !important;
+        padding: 1.25rem 1rem;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.75rem;
+        position: relative; /* allow pseudo highlights */
+    }
+
+    .auth-app-wrapper .auth-card h1,
+    .auth-app-wrapper .auth-card h2 { text-align: center; margin: 0; }
+
+    .auth-app-wrapper .auth-card h1 { font-size: 1.25rem; }
+    .auth-app-wrapper .auth-card h2 { font-size: 1rem; color: var(--muted); font-weight: 400; }
+
+    .auth-app-wrapper .auth-card form { width: 100%; }
+    .auth-app-wrapper .auth-card .form-group { width: 100%; }
+    .auth-app-wrapper .auth-card .form-control { width: 100%; box-sizing: border-box; }
+    .auth-app-wrapper .auth-card .btn-block { width: 100%; }
+
+    .auth-app-wrapper .auth-footer { text-align: center; margin-top: .5rem; }
+
+    /* Remove borders and background coming from global auth styles */
+    .auth-app-wrapper .auth-container {
+        min-height: 100vh;
+        padding: 0;
+        background: none !important;
+        display: flex;
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .auth-app-wrapper .auth-card {
+        border-top: 3px solid var(--primary-color) !important;
+        border-bottom: 3px solid var(--primary-color) !important;
+        background: var(--card-bg);
+    }
+
+    /* Clear visible colored bars at very top & bottom to give the login area focus */
+    .auth-app-wrapper .auth-card::before,
+    .auth-app-wrapper .auth-card::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 8px; /* visible band */
+        pointer-events: none;
+    }
+
+    .auth-app-wrapper .auth-card::before {
+        top: 0;
+        background: linear-gradient(90deg, rgba(79,70,229,0.95), rgba(79,70,229,0.65));
+    }
+
+    .auth-app-wrapper .auth-card::after {
+        bottom: 0;
+        background: linear-gradient(270deg, rgba(79,70,229,0.95), rgba(79,70,229,0.65));
+    }
+
+    .auth-app-wrapper .auth-footer {
+        border-top: none !important;
+        padding-top: 0;
+        margin-top: 0.5rem;
+    }
+
+    /* Prevent page scrolling only when the login wrapper is present.
+       Make the wrapper fixed so it overlays the page without changing html/body. */
+    .auth-app-wrapper {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100vh;
+        z-index: 1500;
+        overflow: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .auth-app-wrapper, .auth-app-wrapper .auth-container, .auth-app-wrapper .auth-card {
+        height: 100%;
     }
 }
 

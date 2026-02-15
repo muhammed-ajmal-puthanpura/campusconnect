@@ -32,6 +32,9 @@
                 <p><strong>Date:</strong> {{ event.date.strftime('%B %d, %Y') }}</p>
                 <p><strong>Mode:</strong> {% if (event.mode or '')|lower == 'online' %}Online{% else %}Offline{% endif %}</p>
                 <p><strong>Venue:</strong> {{ event.venue.venue_name if event.venue else '—' }}</p>
+                {% if event.duty_leave_provided %}
+                <p><strong>Duty Leave:</strong> <span style="color:#065f46;font-weight:600;">Provided</span></p>
+                {% endif %}
                 {% if event.event_id in registered_event_ids %}
                     {% if event.event_id in (attended_event_ids or []) %}
                         <button class="btn btn-success" disabled><i class="ph ph-check-circle"></i> Attended</button>

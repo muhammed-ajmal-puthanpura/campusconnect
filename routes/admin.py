@@ -621,9 +621,18 @@ def create_user():
         flash('Please fill all required fields for user creation.', 'error')
         return redirect(url_for('admin.users'))
 
+    # Enforce minimum password length
+    if len(password) < 8:
+        flash('Password must be at least 8 characters long.', 'error')
+        return redirect(url_for('admin.users'))
+
     role = Role.query.get(int(role_id)) if role_id else None
-    if not role or role.role_name not in ['HOD', 'Event Organizer', 'Organizer']:
-        flash('Only HOD or Event Organizer roles can be created here.', 'error')
+    if not role:
+        flash('Invalid role selected.', 'error')
+        return redirect(url_for('admin.users'))
+    # Admin accounts cannot be created via this interface
+    if (role.role_name or '').strip().lower() == 'admin':
+        flash('Cannot create Admin accounts via this interface.', 'error')
         return redirect(url_for('admin.users'))
 
     if User.query.filter_by(email=email).first():
@@ -634,9 +643,26 @@ def create_user():
         flash('Username already exists. Please use a different username.', 'error')
         return redirect(url_for('admin.users'))
 
-    if role.role_name == 'HOD' and not dept_id:
-        flash('Please select a department for HOD.', 'error')
-        return redirect(url_for('admin.users'))
+    # If creating HOD, dept is required and only one HOD per department allowed
+    if (role.role_name or '').strip().lower() == 'hod':
+        if not dept_id:
+            flash('Please select a department for HOD.', 'error')
+            return redirect(url_for('admin.users'))
+        try:
+            dept_int = int(dept_id)
+        except Exception:
+            flash('Invalid department selected for HOD.', 'error')
+            return redirect(url_for('admin.users'))
+        existing_hod = User.query.join(Role).filter(Role.role_name.ilike('hod'), User.dept_id == dept_int).first()
+        if existing_hod:
+            flash('A HOD already exists for the selected department.', 'error')
+            return redirect(url_for('admin.users'))
+    # If creating Principal, ensure only one Principal exists
+    if (role.role_name or '').strip().lower() == 'principal':
+        existing_principal = User.query.join(Role).filter(Role.role_name.ilike('principal')).first()
+        if existing_principal:
+            flash('A Principal account already exists.', 'error')
+            return redirect(url_for('admin.users'))
 
     user = User(
         full_name=full_name,
@@ -677,9 +703,32 @@ def edit_user(user_id):
             flash('Invalid role selected.', 'error')
             return redirect(url_for('admin.edit_user', user_id=user_id))
 
-        if role.role_name == 'HOD' and not dept_id:
-            flash('Please select a department for HOD.', 'error')
+        # Prevent assigning Admin role here
+        if (role.role_name or '').strip().lower() == 'admin':
+            flash('Cannot assign Admin role via this interface.', 'error')
             return redirect(url_for('admin.edit_user', user_id=user_id))
+
+        # If assigning HOD, dept required and ensure no other HOD for that dept
+        if (role.role_name or '').strip().lower() == 'hod':
+            if not dept_id:
+                flash('Please select a department for HOD.', 'error')
+                return redirect(url_for('admin.edit_user', user_id=user_id))
+            try:
+                dept_int = int(dept_id)
+            except Exception:
+                flash('Invalid department selected for HOD.', 'error')
+                return redirect(url_for('admin.edit_user', user_id=user_id))
+            existing_hod = User.query.join(Role).filter(Role.role_name.ilike('hod'), User.dept_id == dept_int, User.user_id != user.user_id).first()
+            if existing_hod:
+                flash('A HOD already exists for the selected department.', 'error')
+                return redirect(url_for('admin.edit_user', user_id=user_id))
+
+        # If assigning Principal, ensure only one Principal exists (excluding this user)
+        if (role.role_name or '').strip().lower() == 'principal':
+            existing_principal = User.query.join(Role).filter(Role.role_name.ilike('principal'), User.user_id != user.user_id).first()
+            if existing_principal:
+                flash('A Principal account already exists.', 'error')
+                return redirect(url_for('admin.edit_user', user_id=user_id))
 
         if username and username != user.username:
             if User.query.filter(User.username == username, User.user_id != user.user_id).first():
@@ -858,6 +907,11 @@ def bulk_upload_students():
             skipped += 1
             errors.append(f'Missing password for {email}')
             return
+        # Enforce minimum password length
+        if len(password) < 8:
+            skipped += 1
+            errors.append(f'Password too short for {email} (min 8 chars)')
+            return
 
         resolved_dept_id = _resolve_department(dept_id, dept_name, dept_map)
 
@@ -1014,7 +1068,7 @@ def guests_update_settings():
 @admin_required
 def guests_deactivate(user_id):
     user = User.query.get_or_404(user_id)
-    is_guest_user = (user.role and (user.role.role_name or '').strip().lower() == 'guest') or bool(getattr(user, 'is_guest', False))
+    is_guest_user = (user.role and (user.role.role_name or '').strip().lower() == 'guest')
     if not is_guest_user:
         flash('Not a guest user', 'error')
         return redirect(url_for('admin.guests'))
@@ -1027,7 +1081,7 @@ def guests_deactivate(user_id):
 @admin_required
 def guests_delete(user_id):
     user = User.query.get_or_404(user_id)
-    is_guest_user = (user.role and (user.role.role_name or '').strip().lower() == 'guest') or bool(getattr(user, 'is_guest', False))
+    is_guest_user = (user.role and (user.role.role_name or '').strip().lower() == 'guest')
     if not is_guest_user:
         flash('Not a guest user', 'error')
         return redirect(url_for('admin.guests'))
